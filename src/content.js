@@ -2,6 +2,7 @@ const EXTENSION_BADGE_ID = "github-pr-reviewer-status";
 const PENDING_CREATION_KEY = "github-pr-reviewer-pending-creation";
 const processedPageKeys = new Set();
 let pendingTimer = null;
+let retryIntervalId = null;
 
 function parsePullRequestFromLocation(currentUrl) {
   const url = new URL(currentUrl);
@@ -33,6 +34,18 @@ function parseCreationPageFromLocation(currentUrl) {
     repo: match[2],
     sourceUrl: url.href
   };
+}
+
+function parseCreationReferrer(currentReferrer) {
+  if (!currentReferrer) {
+    return null;
+  }
+
+  try {
+    return parseCreationPageFromLocation(currentReferrer);
+  } catch (error) {
+    return null;
+  }
 }
 
 function getPendingCreation() {
@@ -111,12 +124,12 @@ function renderStatus(message, kind = "info") {
   window.clearTimeout(renderStatus.hideTimer);
   renderStatus.hideTimer = window.setTimeout(() => {
     badge.remove();
-  }, 6000);
+  }, 10000);
 }
 
 function maybeProcessPullRequest(reason) {
   const pullRequest = parsePullRequestFromLocation(window.location.href);
-  const pendingCreation = getPendingCreation();
+  const pendingCreation = getPendingCreation() || parseCreationReferrer(document.referrer);
 
   if (!pullRequest || !pendingCreation) {
     return;
@@ -159,9 +172,28 @@ function maybeProcessPullRequest(reason) {
 
       if (response.ok || response.status !== "not-ready") {
         clearPendingCreation();
+        stopRetryLoop();
       }
     }
   );
+}
+
+function startRetryLoop() {
+  stopRetryLoop();
+  retryIntervalId = window.setInterval(() => {
+    maybeProcessPullRequest("retry-loop");
+  }, 1500);
+
+  window.setTimeout(() => {
+    stopRetryLoop();
+  }, 15000);
+}
+
+function stopRetryLoop() {
+  if (retryIntervalId !== null) {
+    window.clearInterval(retryIntervalId);
+    retryIntervalId = null;
+  }
 }
 
 function getInteractiveText(target) {
@@ -196,6 +228,7 @@ function isCreationTriggerText(text) {
 function markPendingCreation(creationPage, source) {
   setPendingCreation(creationPage);
   console.info("GitHub PR Reviewer: armed for PR creation from", source, creationPage.sourceUrl);
+  renderStatus("PR creation detected. Reviewers will be requested after GitHub opens the new PR.");
 }
 
 function handlePotentialCreationClick(event) {
@@ -244,13 +277,18 @@ function handlePotentialCreationSubmit(event) {
   }
 
   markPendingCreation(creationPage, "submit");
-  renderStatus("PR creation detected. Reviewers will be requested after GitHub opens the new PR.");
 }
 
 function schedulePullRequestCheck(reason) {
   window.clearTimeout(pendingTimer);
   pendingTimer = window.setTimeout(() => {
     maybeProcessPullRequest(reason);
+
+    if (getPendingCreation() || parseCreationReferrer(document.referrer)) {
+      startRetryLoop();
+    } else {
+      stopRetryLoop();
+    }
   }, 700);
 }
 
