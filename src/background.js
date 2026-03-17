@@ -4,6 +4,7 @@ const SETTINGS_DEFAULTS = {
   repoAllowlistText: "",
   autoRun: true
 };
+const NEW_PULL_REQUEST_RETRY_DELAYS_MS = [1200, 2500, 5000];
 
 function normalizeEntries(text) {
   return text
@@ -119,6 +120,12 @@ async function getExistingReviewerLogins(owner, repo, pullNumber, token) {
   return logins;
 }
 
+async function sleep(delayMs) {
+  await new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
 function buildSuccessMessage(requested, skipped) {
   if (requested.length > 0 && skipped.length > 0) {
     return `Requested ${requested.join(", ")}. Skipped ${skipped.join(", ")} because they were already on the PR.`;
@@ -176,7 +183,38 @@ async function handlePullRequestMessage(payload) {
     };
   }
 
-  const existingReviewers = await getExistingReviewerLogins(owner, repo, pullNumber, settings.token);
+  let existingReviewers;
+
+  try {
+    existingReviewers = await getExistingReviewerLogins(owner, repo, pullNumber, settings.token);
+  } catch (error) {
+    if (error.status === 404 || error.status === 422) {
+      for (const delayMs of NEW_PULL_REQUEST_RETRY_DELAYS_MS) {
+        await sleep(delayMs);
+
+        try {
+          existingReviewers = await getExistingReviewerLogins(owner, repo, pullNumber, settings.token);
+          break;
+        } catch (retryError) {
+          if (retryError.status !== 404 && retryError.status !== 422) {
+            throw retryError;
+          }
+
+          error = retryError;
+        }
+      }
+    }
+
+    if (!existingReviewers) {
+      return {
+        ok: false,
+        status: "not-ready",
+        message:
+          "The new pull request was detected, but GitHub was not ready for reviewer requests yet. Refresh the PR page once and try again."
+      };
+    }
+  }
+
   const reviewersToRequest = settings.reviewers.filter(
     (reviewer) => !existingReviewers.has(reviewer.toLowerCase())
   );

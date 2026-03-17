@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "GitHub PR Reviewer",
   "version": "0.1.0",
-  "description": "Automatically request configured reviewers when you open a GitHub pull request.",
+  "description": "Automatically request configured reviewers when you create a GitHub pull request.",
   "permissions": [
     "storage"
   ],

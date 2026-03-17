@@ -1,14 +1,18 @@
 # GitHub PR Reviewer
 
 GitHub PR Reviewer is a Chrome Manifest V3 extension that automatically requests configured
-reviewers whenever you open a GitHub pull request page.
+reviewers only when you create a pull request from GitHub's compare or PR creation page.
 
 ## How It Works
 
-- The content script runs on `https://github.com/*` and detects pull request pages.
+- The content script runs on `https://github.com/*` and watches GitHub's PR creation flow.
 - The background service worker reads your saved settings from `chrome.storage.sync`.
-- When auto-run is enabled, the extension calls GitHub's review request API for any configured
-  reviewers who are not already requested or who have not already reviewed.
+- When you submit a PR from a compare page such as
+  `https://github.com/owner/repo/compare/base...branch`, the extension marks that creation flow.
+- The extension also watches for the intermediate GitHub "Create pull request" click before the
+  final PR form submit, since GitHub often uses a multi-step PR creation flow.
+- After GitHub redirects to the newly created PR, the extension calls GitHub's review request API
+  for any configured reviewers who are not already requested or who have not already reviewed.
 
 ## Setup
 
@@ -39,15 +43,17 @@ reviewers whenever you open a GitHub pull request page.
 
 ## Limitations
 
-- This extension only runs when you open a GitHub pull request page in Chrome.
+- This extension only runs when you create a pull request in Chrome from GitHub's web UI.
 - It does not watch all repositories in the background or respond to PRs created elsewhere.
 - Reviewer assignment still depends on GitHub permissions and whether the specified users are
   valid reviewers for the repository.
+- GitHub can take a moment to expose a newly created PR to the API, so the extension retries
+  briefly before showing a retry message.
 
 ## Manual Validation
 
 1. Save a valid token and reviewer usernames in the options page.
-2. Open a GitHub pull request page that you can edit.
-3. Confirm the extension reports success and GitHub shows the requested reviewers.
-4. Refresh the page and confirm it does not request duplicate reviewers.
+2. Open a GitHub compare page and create a pull request from the web UI.
+3. Confirm the extension reports success after the new PR opens and GitHub shows the requested reviewers.
+4. Refresh the PR page and confirm it does not request duplicate reviewers.
 5. Test one failure case such as an invalid reviewer name or missing token.
