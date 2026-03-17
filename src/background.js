@@ -4,7 +4,7 @@ const SETTINGS_DEFAULTS = {
   repoAllowlistText: "",
   autoRun: true
 };
-const NEW_PULL_REQUEST_RETRY_DELAYS_MS = [1200, 2500, 5000];
+const SINGLE_RETRY_DELAY_MS = 1500;
 
 function normalizeEntries(text) {
   return text
@@ -160,64 +160,74 @@ async function handlePullRequestMessage(payload) {
     };
   }
 
-  let lastRetryableError = null;
+  try {
+    await requestReviewers(owner, repo, pullNumber, settings.token, settings.reviewers);
 
-  for (const delayMs of [0, ...NEW_PULL_REQUEST_RETRY_DELAYS_MS]) {
-    if (delayMs > 0) {
-      await sleep(delayMs);
-    }
+    return {
+      ok: true,
+      status: "requested",
+      message: `Requested reviewers: ${settings.reviewers.join(", ")}.`,
+      requested: settings.reviewers
+    };
+  } catch (error) {
+    if (error.status === 404) {
+      await sleep(SINGLE_RETRY_DELAY_MS);
 
-    try {
-      await requestReviewers(owner, repo, pullNumber, settings.token, settings.reviewers);
+      try {
+        await requestReviewers(owner, repo, pullNumber, settings.token, settings.reviewers);
 
-      return {
-        ok: true,
-        status: "requested",
-        message: `Requested reviewers: ${settings.reviewers.join(", ")}.`,
-        requested: settings.reviewers
-      };
-    } catch (error) {
-      if (error.status === 404) {
-        lastRetryableError = error;
-        continue;
-      }
-
-      if (error.status === 422) {
-        const normalizedMessage = String(error.message || "").toLowerCase();
-
-        if (
-          normalizedMessage.includes("reviewers") &&
-          (normalizedMessage.includes("already") || normalizedMessage.includes("pending"))
-        ) {
+        return {
+          ok: true,
+          status: "requested",
+          message: `Requested reviewers: ${settings.reviewers.join(", ")}.`,
+          requested: settings.reviewers
+        };
+      } catch (retryError) {
+        if (retryError.status === 404) {
           return {
-            ok: true,
-            status: "already-requested",
-            message: "Configured reviewers are already requested on this pull request."
+            ok: false,
+            status: "api-error",
+            message:
+              "GitHub returned 404 for this pull request. Check that the URL is correct and that the token can access this repository."
           };
         }
 
-        throw error;
+        if (retryError.status === 422) {
+          const normalizedMessage = String(retryError.message || "").toLowerCase();
+
+          if (
+            normalizedMessage.includes("reviewers") &&
+            (normalizedMessage.includes("already") || normalizedMessage.includes("pending"))
+          ) {
+            return {
+              ok: true,
+              status: "already-requested",
+              message: "Configured reviewers are already requested on this pull request."
+            };
+          }
+        }
+
+        throw retryError;
       }
-
-      throw error;
     }
-  }
 
-  if (lastRetryableError) {
-    return {
-      ok: false,
-      status: "not-ready",
-      message:
-        "The new pull request was detected, but GitHub was not ready for reviewer requests yet. Refresh the PR page once and try again."
-    };
-  }
+    if (error.status === 422) {
+      const normalizedMessage = String(error.message || "").toLowerCase();
 
-  return {
-    ok: false,
-    status: "not-ready",
-    message:
-      "The new pull request was detected, but GitHub was not ready for reviewer requests yet. Refresh the PR page once and try again."
-  };
+      if (
+        normalizedMessage.includes("reviewers") &&
+        (normalizedMessage.includes("already") || normalizedMessage.includes("pending"))
+      ) {
+        return {
+          ok: true,
+          status: "already-requested",
+          message: "Configured reviewers are already requested on this pull request."
+        };
+      }
+    }
+
+    throw error;
+  }
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
