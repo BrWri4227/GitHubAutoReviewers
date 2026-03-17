@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GitHub PR Reviewer Options</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: Arial, sans-serif;
+      }
+
+      body {
+        margin: 0;
+        padding: 32px;
+        background: #0d1117;
+        color: #e6edf3;
+      }
+
+      main {
+        max-width: 760px;
+        margin: 0 auto;
+      }
+
+      h1 {
+        margin-top: 0;
+      }
+
+      p {
+        color: #9da7b3;
+      }
+
+      form {
+        display: grid;
+        gap: 20px;
+      }
+
+      label {
+        display: grid;
+        gap: 8px;
+        font-weight: 600;
+      }
+
+      input[type="password"],
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 12px;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        background: #161b22;
+        color: #e6edf3;
+        font: inherit;
+      }
+
+      textarea {
+        min-height: 120px;
+        resize: vertical;
+      }
+
+      .hint {
+        margin: 0;
+        font-size: 13px;
+      }
+
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 600;
+      }
+
+      .checkbox-row input {
+        inline-size: 18px;
+        block-size: 18px;
+      }
+
+      button {
+        width: fit-content;
+        padding: 10px 16px;
+        border: 0;
+        border-radius: 8px;
+        background: #238636;
+        color: #ffffff;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      #status {
+        min-height: 20px;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>GitHub PR Reviewer</h1>
+      <p>
+        Save a GitHub token and the reviewers you want requested automatically when a pull request
+        page opens in Chrome.
+      </p>
+
+      <form id="settings-form">
+        <label for="token">
+          GitHub personal access token
+          <input id="token" name="token" type="password" autocomplete="off">
+          <span class="hint">
+            For fine-grained tokens, grant repository Pull requests permission with write access.
+          </span>
+        </label>
+
+        <label for="reviewers">
+          Reviewer usernames
+          <textarea
+            id="reviewers"
+            name="reviewers"
+            placeholder="octocat&#10;hubot"
+          ></textarea>
+          <span class="hint">Enter one username per line or separate them with commas.</span>
+        </label>
+
+        <label for="repo-allowlist">
+          Optional repo allowlist
+          <textarea
+            id="repo-allowlist"
+            name="repoAllowlist"
+            placeholder="your-org/your-repo&#10;another-org/platform"
+          ></textarea>
+          <span class="hint">
+            Leave blank to run on every repository you can access. Use `owner/repo` entries only.
+          </span>
+        </label>
+
+        <label class="checkbox-row" for="auto-run">
+          <input id="auto-run" name="autoRun" type="checkbox">
+          Automatically request reviewers when a pull request page loads
+        </label>
+
+        <button type="submit">Save settings</button>
+        <p id="status" aria-live="polite"></p>
+      </form>
+    </main>
+
+    <script src="src/options.js"></script>
+  </body>
+</html>

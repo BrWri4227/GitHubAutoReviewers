@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "GitHub PR Reviewer",
+  "version": "0.1.0",
+  "description": "Automatically request configured reviewers when you open a GitHub pull request.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://github.com/*",
+    "https://api.github.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://github.com/*"
+      ],
+      "js": [
+        "src/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_title": "GitHub PR Reviewer"
+  }
+}
