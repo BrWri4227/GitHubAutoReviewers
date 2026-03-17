@@ -148,8 +148,6 @@ function maybeProcessPullRequest(reason) {
     return;
   }
 
-  processedPageKeys.add(pageKey);
-
   chrome.runtime.sendMessage(
     {
       type: "process-pull-request",
@@ -171,8 +169,11 @@ function maybeProcessPullRequest(reason) {
       console.info("GitHub PR Reviewer:", response.status, response.message);
 
       if (response.ok || response.status !== "not-ready") {
+        processedPageKeys.add(pageKey);
         clearPendingCreation();
         stopRetryLoop();
+      } else {
+        processedPageKeys.delete(pageKey);
       }
     }
   );

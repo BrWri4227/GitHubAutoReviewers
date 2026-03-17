@@ -97,45 +97,22 @@ async function fetchGitHub(endpoint, token, options = {}) {
   return data;
 }
 
-async function getExistingReviewerLogins(owner, repo, pullNumber, token) {
-  const [requestedReviewers, reviews] = await Promise.all([
-    fetchGitHub(`/repos/${owner}/${repo}/pulls/${pullNumber}/requested_reviewers`, token),
-    fetchGitHub(`/repos/${owner}/${repo}/pulls/${pullNumber}/reviews`, token)
-  ]);
-
-  const logins = new Set();
-
-  for (const user of requestedReviewers.users || []) {
-    if (user && user.login) {
-      logins.add(user.login.toLowerCase());
-    }
-  }
-
-  for (const review of reviews || []) {
-    if (review && review.user && review.user.login) {
-      logins.add(review.user.login.toLowerCase());
-    }
-  }
-
-  return logins;
-}
-
 async function sleep(delayMs) {
   await new Promise((resolve) => {
     setTimeout(resolve, delayMs);
   });
 }
 
-function buildSuccessMessage(requested, skipped) {
-  if (requested.length > 0 && skipped.length > 0) {
-    return `Requested ${requested.join(", ")}. Skipped ${skipped.join(", ")} because they were already on the PR.`;
-  }
-
-  if (requested.length > 0) {
-    return `Requested reviewers: ${requested.join(", ")}.`;
-  }
-
-  return `All configured reviewers were already on this PR: ${skipped.join(", ")}.`;
+async function requestReviewers(owner, repo, pullNumber, token, reviewers) {
+  return fetchGitHub(`/repos/${owner}/${repo}/pulls/${pullNumber}/requested_reviewers`, token, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      reviewers
+    })
+  });
 }
 
 async function handlePullRequestMessage(payload) {
@@ -183,71 +160,63 @@ async function handlePullRequestMessage(payload) {
     };
   }
 
-  let existingReviewers;
+  let lastRetryableError = null;
 
-  try {
-    existingReviewers = await getExistingReviewerLogins(owner, repo, pullNumber, settings.token);
-  } catch (error) {
-    if (error.status === 404 || error.status === 422) {
-      for (const delayMs of NEW_PULL_REQUEST_RETRY_DELAYS_MS) {
-        await sleep(delayMs);
-
-        try {
-          existingReviewers = await getExistingReviewerLogins(owner, repo, pullNumber, settings.token);
-          break;
-        } catch (retryError) {
-          if (retryError.status !== 404 && retryError.status !== 422) {
-            throw retryError;
-          }
-
-          error = retryError;
-        }
-      }
+  for (const delayMs of [0, ...NEW_PULL_REQUEST_RETRY_DELAYS_MS]) {
+    if (delayMs > 0) {
+      await sleep(delayMs);
     }
 
-    if (!existingReviewers) {
+    try {
+      await requestReviewers(owner, repo, pullNumber, settings.token, settings.reviewers);
+
       return {
-        ok: false,
-        status: "not-ready",
-        message:
-          "The new pull request was detected, but GitHub was not ready for reviewer requests yet. Refresh the PR page once and try again."
+        ok: true,
+        status: "requested",
+        message: `Requested reviewers: ${settings.reviewers.join(", ")}.`,
+        requested: settings.reviewers
       };
+    } catch (error) {
+      if (error.status === 404) {
+        lastRetryableError = error;
+        continue;
+      }
+
+      if (error.status === 422) {
+        const normalizedMessage = String(error.message || "").toLowerCase();
+
+        if (
+          normalizedMessage.includes("reviewers") &&
+          (normalizedMessage.includes("already") || normalizedMessage.includes("pending"))
+        ) {
+          return {
+            ok: true,
+            status: "already-requested",
+            message: "Configured reviewers are already requested on this pull request."
+          };
+        }
+
+        throw error;
+      }
+
+      throw error;
     }
   }
 
-  const reviewersToRequest = settings.reviewers.filter(
-    (reviewer) => !existingReviewers.has(reviewer.toLowerCase())
-  );
-  const skippedReviewers = settings.reviewers.filter((reviewer) =>
-    existingReviewers.has(reviewer.toLowerCase())
-  );
-
-  if (reviewersToRequest.length === 0) {
+  if (lastRetryableError) {
     return {
-      ok: true,
-      status: "already-requested",
-      message: buildSuccessMessage([], skippedReviewers),
-      requested: [],
-      skipped: skippedReviewers
+      ok: false,
+      status: "not-ready",
+      message:
+        "The new pull request was detected, but GitHub was not ready for reviewer requests yet. Refresh the PR page once and try again."
     };
   }
 
-  await fetchGitHub(`/repos/${owner}/${repo}/pulls/${pullNumber}/requested_reviewers`, settings.token, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      reviewers: reviewersToRequest
-    })
-  });
-
   return {
-    ok: true,
-    status: "requested",
-    message: buildSuccessMessage(reviewersToRequest, skippedReviewers),
-    requested: reviewersToRequest,
-    skipped: skippedReviewers
+    ok: false,
+    status: "not-ready",
+    message:
+      "The new pull request was detected, but GitHub was not ready for reviewer requests yet. Refresh the PR page once and try again."
   };
 }
 
