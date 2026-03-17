@@ -51,3 +51,5 @@ reviewers whenever you open a GitHub pull request page.
 3. Confirm the extension reports success and GitHub shows the requested reviewers.
 4. Refresh the page and confirm it does not request duplicate reviewers.
 5. Test one failure case such as an invalid reviewer name or missing token.
+
+Test
